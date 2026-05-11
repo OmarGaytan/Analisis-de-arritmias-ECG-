@@ -1,0 +1,38 @@
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Comma-separated values
+*.csv
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Database files
+*.sqlite3
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
