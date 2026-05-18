@@ -1,7 +1,6 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 
-#TODO: Falta el manejo de NaN y deteccion de outliers.
 class SignalProcessor():
     @staticmethod
     def signal_processor(file_path):    
@@ -9,31 +8,72 @@ class SignalProcessor():
             # Intentar cargar el archivo CSV sin encabezado
             data = pd.read_csv(file_path, header=None)
             
-            # Verificar que tenga al menos 2 columnas (una para la senal y otra para la etiqueta), si no, hago un early return con un mensaje de error
+            # Verificar que tenga al menos 2 columnas
             if data.shape[1] < 2:
-                #TODO: Agregar un mensaje de error en la consola de estado de la aplicacion en lugar de imprimirlo en la terminal
-                return print("El archivo debe tener al menos 2 columnas (senal y etiqueta)")
+                # TODO: Agregar un mensaje de error en la consola
+                return "Error: El archivo debe tener senal y etiqueta"
 
-            # Solo una visualizacion de un latido (fila 0) para validar el proceso de filtrado y normalizacion
-            print(f"Filas: {data.shape[0]}, Columnas: {data.shape[1]}")
-            signals = data.iloc[0, :-1]
-            #labels  = data.iloc[0, -1]
+            print(f"Filas a procesar: {data.shape[0]}, Columnas: {data.shape[1]}")
+            
+            # Selecciono todas las filas y excluyo la etiqueta
+            signals = data.iloc[:, :-1]
+            
+            # Sumo los nulos de toda la matriz
+            detected_nulls = signals.isna().sum().sum()
 
-            # Aplicar filtro de media movil (con un rango de 25 entre valores adyacentes) para eliminar el ruido de la senal original
-            # min_periods=1 para que no haya NaN al inicio ni al final, center=True para que el filtro sea simetrico
-            trend= pd.Series(signals).rolling(window=50, center=True, min_periods=1).mean()
-            clean_signals = signals - trend  # Ahora si elimino el ruido de la senal original
+            #TODO: DOCUMENTAR ESTA CORRECCION: Debido a la migración a Pandas 3.0+, se refactorizo el procesamiento horizontal utilizando matrices transpuestas (.T) para mantener la eficiencia vectorizada ante la depreciacion del parametro axis=1
+            if detected_nulls > 0:
+                print(f"Se detectaron {detected_nulls} valores nulos. Iniciando correccion...")
+                # Transpogo (.T), interpolo y volvo a transponer (.T)
+                nan_process = signals.T.interpolate(method='linear', limit_direction='both').T
+            else:
+                print("No se detectaron valores nulos. Procede...")
+                nan_process = signals
 
-            max_value = clean_signals.max()  # Excluyendo la ultima columna (etiqueta)
-            min_value = clean_signals.min()  # Lo mismo que el anterior
+            # Transponer (.T), aplico rolling y volvo a transponer (.T)
+            trend = nan_process.T.rolling(window=50, center=True, min_periods=1).mean().T
+            
+            clean_signals = nan_process - trend 
 
-            # Normalizar la senal filtrada
+            # Funciones .max() y .min()
+            max_value = clean_signals.max(axis=1)
+            min_value = clean_signals.min(axis=1)
+
+            # sub() y div() con axis=0 para normalizar cada latido de forma independiente
             normalized_signals = clean_signals.sub(min_value, axis=0).div(max_value - min_value, axis=0)
+            results = []
+            
+            # Converto el DataFrame a una matriz plana de NumPy
+            norm_matrix = normalized_signals.to_numpy() 
+            
+            # Defino umbral y distancia minima entre picos para deteccion de outliers
+            umbral = 0.85
+            min_distance = 50
 
-            plt.plot(normalized_signals)
-            plt.title("Visualizacion de un solo latido")
-            plt.show()
-                    
+            # Iteramos sobre cada latido en la matriz procesada
+            for row_idx in range(len(norm_matrix)):
+                row_signal = norm_matrix[row_idx]
+                outliers = []
+                last_peak = -min_distance
+
+                # Busco maximos en este latido especifico
+                for i in range(1, len(row_signal) - 1):
+                    if row_signal[i] > umbral:
+                        if row_signal[i] > row_signal[i-1] and row_signal[i] > row_signal[i+1]:
+                            if (i - last_peak) > min_distance:
+                                outliers.append(i)
+                                last_peak = i
+                
+                # Agrego el diccionario de este latido a la lista principal
+                results.append({
+                    "signal": row_signal.tolist(),
+                    "outliers": outliers,
+                    "detected_outlier": len(outliers) > 0
+                })
+
+            # Retorno la lista de diccionarios con la señal procesada y los picos detectados
+            return results
+
+        # TODO: Enviar esto a la consola de MainApp y mostrar un mensaje de error al usuario, sin que se caiga la app
         except Exception as e:
-            #TODO: Agregar un mensaje de error en la consola de estado de la aplicacion en lugar de imprimirlo en la terminal
-            return print(f"Error al procesar el archivo CSV: {e}")
+            return f"Error critico al procesar el archivo: {repr(e)}"
